@@ -1,0 +1,14 @@
+[package]
+name = "openlock"
+version = "0.1.0"
+authors = ["Alex March"]
+readme = "README.md"
+edition = "2021"
+license = "GPL-3.0"
+description = "An Open space for Locksport community built on web3 tech"
+
+repository = "https://github.com/openlock/openlock"
+homepage = "https://github.com/openlock/openlock"
+keywords = ["crypto", "ethereum", "web3"]
+
+[dependencies]
