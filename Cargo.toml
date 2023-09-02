@@ -1,14 +1,24 @@
-[package]
-name = "openlock"
+[workspace]
+resolver = "2"
+members = ["openlock"]
+
+[workspace.package]
 version = "0.1.0"
-authors = ["Alex March"]
+authors = ["Alex March <alex@hosaka.cc>"]
 readme = "README.md"
 edition = "2021"
 license = "GPL-3.0"
-description = "An Open space for Locksport community built on web3 tech"
 
 repository = "https://github.com/openlock/openlock"
 homepage = "https://github.com/openlock/openlock"
 keywords = ["crypto", "ethereum", "web3"]
 
-[dependencies]
+[workspace.dependencies]
+openlock = { path = "openlock" }
+
+# [profile.dev]
+# debug = 0
+# [profile.release]
+# lto = true
+# opt-level = 3
+# codegen-units = 1
