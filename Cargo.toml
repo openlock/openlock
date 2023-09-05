@@ -14,7 +14,7 @@ homepage = "https://github.com/openlock/openlock"
 keywords = ["crypto", "ethereum", "web3"]
 
 [workspace.dependencies]
-openlock = { path = "openlock" }
+openlock = { path = "./openlock" }
 
 # [profile.dev]
 # debug = 0
