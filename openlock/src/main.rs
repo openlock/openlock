@@ -1,127 +1,78 @@
-use std::sync::Arc;
+mod templates;
 
-use actix_web::{
-    get, middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder,
-};
-use ethers::{
-    prelude::{LocalWallet, Middleware, Provider, Ws},
-    utils::Anvil,
-};
-use leptos::*;
+use anyhow::Context;
+use axum::{routing::get, Router};
+use std::net::SocketAddr;
+use tower_http::services::ServeDir;
+use tracing::info;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-mod components;
-use components::*;
+use templates::IndexTemplate;
 
-#[derive(Clone)]
-struct AppState {
-    name: String,
-    provider: Arc<Provider<Ws>>,
+async fn status() -> &'static str {
+    return "OK";
 }
 
-#[component]
-fn Head(cx: Scope) -> impl IntoView {
-    return view! {cx,
-        <head>
-            <meta charset="UTF-8" />
-            <meta name="description" content="An Open space for Locksport community built" />
-            <title>OpenLock</title>
-            <link href="/favicon.ico" rel="icon" type="image/x-icon" />
-            <link href="/style.css" rel="stylesheet" type="text/css" />
-            <script src="https://unpkg.com/htmx.org@1.9.5" integrity="sha384-xcuj3WpfgjlKF+FXhSQFQ0ZNr39ln+hwjN3npfM9VBnUskLolQAcN80McRIVOPuO" crossorigin="anonymous" />
-        </head>
-    };
+async fn index() -> Result<IndexTemplate, AppError> {
+    return Ok(IndexTemplate {});
 }
 
-#[component]
-fn Main(cx: Scope) -> impl IntoView {
-    return view! {cx,
-        <main>
-            <UserCard />
-            <button>Connect</button>
-        </main>
-    };
-}
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "openlock=debug".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 
-#[get("/user")]
-async fn user(_req: HttpRequest, _data: web::Data<AppState>) -> Result<HttpResponse, Error> {
-    // load this from the wallet
-    let user = UserItem {
-        name: "John".to_string(),
-    };
-    let html = leptos::ssr::render_to_string(move |cx| {
-        view! {cx,
-            <UserComponent user=user/>
-        }
-    });
+    let api_router = Router::new().route("/status", get(status));
 
-    return Ok(HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(html));
-}
+    let pwd = std::env::current_dir().context("failed to get current directory")?;
+    let static_dir = ServeDir::new(format!("{}/static", pwd.to_str().unwrap_or("/srv")));
+    let assets_dir = ServeDir::new(format!("{}/assets", pwd.to_str().unwrap_or("/srv")));
 
-#[get("/")]
-async fn index(_req: HttpRequest, data: web::Data<AppState>) -> Result<HttpResponse, Error> {
-    let chain_id = data.provider.get_chainid().await.unwrap();
-    let block_number = data.provider.get_block_number().await.unwrap();
+    let app = Router::new()
+        .route("/", get(index))
+        .nest("/api", api_router)
+        .nest_service("/static", static_dir)
+        .nest_service("/assets", assets_dir);
 
-    let html = leptos::ssr::render_to_string(move |cx| {
-        let (chain, _) = create_signal(cx, chain_id.as_u64());
-        let (block, _) = create_signal(cx, block_number.as_u64());
+    let port = 3000_u16;
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
-        view! {cx,
-            <html lang="en">
-            <Head />
-            <body>
-                <Nav />
-                <Main />
-                <footer>
-                    <p>Chain: {chain.get()}</p>
-                    <p>Block: {block.get()}</p>
-                </footer>
-            </body>
-            </html>
-        }
-    });
+    info!("starting server on port {}", port);
 
-    return Ok(HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(html));
-}
-
-#[get("/style.css")]
-async fn css() -> impl Responder {
-    return actix_files::NamedFile::open_async("../static/style.css").await;
-}
-
-#[get("/favicon.ico")]
-async fn favicon() -> impl Responder {
-    return actix_files::NamedFile::open_async("../static/favicon.ico").await;
-}
-
-#[actix_web::main]
-async fn main() -> Result<(), Error> {
-    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
-
-    let provider = Provider::<Ws>::connect("ws://127.0.0.1:8545")
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
         .await
-        .unwrap();
-
-    let app_state = web::Data::new(AppState {
-        provider: Arc::new(provider),
-        name: String::from("OpenLock"),
-    });
-
-    HttpServer::new(move || {
-        App::new()
-            .wrap(middleware::Logger::default())
-            .app_data(app_state.clone())
-            .service(favicon)
-            .service(index)
-            .service(user)
-    })
-    .bind(("127.0.0.1", 8080))?
-    .run()
-    .await?;
+        .context("error while starting server")?;
 
     return Ok(());
+}
+
+// custom error type
+struct AppError(anyhow::Error);
+
+// helps axum to convert `AppError` into a response
+impl axum::response::IntoResponse for AppError {
+    fn into_response(self) -> axum::response::Response {
+        (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("server error: {}", self.0),
+        )
+            .into_response()
+    }
+}
+
+// use `?` operator on functions that return `Result<_, anyhow::Error>`
+// converting them to `Result<_, AppError>`
+impl<E> From<E> for AppError
+where
+    E: Into<anyhow::Error>,
+{
+    fn from(value: E) -> Self {
+        Self(value.into())
+    }
 }

@@ -13,9 +13,6 @@ repository = "https://github.com/openlock/openlock"
 homepage = "https://github.com/openlock/openlock"
 keywords = ["crypto", "ethereum", "web3"]
 
-[workspace.dependencies]
-openlock = { path = "./openlock" }
-
 # [profile.dev]
 # debug = 0
 # [profile.release]
